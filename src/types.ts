@@ -1,6 +1,5 @@
-import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
-
+import { PublicKey } from "@solana/web3.js";
 
 export interface Global {
   // unused
@@ -30,4 +29,45 @@ export interface BondingCurve {
   tokenTotalSupply: BN;
   complete: boolean;
   creator: PublicKey;
+}
+
+export interface GlobalVolumeAccumulator {
+  startTime: BN;
+  endTime: BN;
+  secondsInADay: BN;
+  mint: PublicKey;
+  totalTokenSupply: BN[];
+  solVolumes: BN[];
+}
+
+export interface UserVolumeAccumulator {
+  user: PublicKey;
+  needsClaim: boolean;
+  totalUnclaimedTokens: BN;
+  totalClaimedTokens: BN;
+  currentSolVolume: BN;
+  lastUpdateTimestamp: BN;
+}
+
+export interface UserVolumeAccumulatorTotalStats {
+  totalUnclaimedTokens: BN;
+  totalClaimedTokens: BN;
+  currentSolVolume: BN;
+}
+
+export interface FeeConfig {
+  admin: PublicKey;
+  flatFees: Fees;
+  feeTiers: FeeTier[];
+}
+
+export interface FeeTier {
+  marketCapLamportsThreshold: BN;
+  fees: Fees;
+}
+
+export interface Fees {
+  lpFeeBps: BN;
+  protocolFeeBps: BN;
+  creatorFeeBps: BN;
 }

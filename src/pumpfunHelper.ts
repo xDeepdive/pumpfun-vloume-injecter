@@ -296,6 +296,8 @@ export class PumpHelper {
     }
   }
 
+
+
   async extendAccountInstruction({
     account,
     user,
@@ -356,11 +358,11 @@ export class PumpHelper {
   }
 
   bondingCurvePda(mint: PublicKey | string): PublicKey {
-    return bondingCurvePda(this.program.programId, mint);
+    return bondingCurvePda(mint);
   }
 
   creatorVaultPda(creator: PublicKey) {
-    return creatorVaultPda(this.program.programId, creator);
+    return creatorVaultPda(creator);
   }
 
   getTokenAmount(bondingCurve: BondingCurve, Solamount: number): BN {

@@ -11,7 +11,7 @@ import {
 import bs58 from "bs58";
 import { saveDataToFile } from "./saveAccounts";
 
-const SWAP_AMOUNT = 2;
+const SWAP_AMOUNT = 0.00;
 
 export const distributeSol = async (
   connection: Connection,
