@@ -11,7 +11,7 @@ import {
 import bs58 from "bs58";
 import { saveDataToFile } from "./saveAccounts";
 
-const SWAP_AMOUNT = 0.00;
+const SWAP_AMOUNT = 0.01;
 
 export const distributeSol = async (
   connection: Connection,
@@ -31,7 +31,7 @@ export const distributeSol = async (
       console.log("Main wallet balance is not enough");
       return [];
     }
-    let solAmount = Math.floor((SWAP_AMOUNT + 0.01) * 10 ** 9);
+    let solAmount = Math.floor((SWAP_AMOUNT) * 10 ** 9);
 
     for (let i = 0; i < distritbutionNum; i++) {
       const wallet = Keypair.generate();
