@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "PumpFun Volume Injection Bot with CLI",
   "scripts": {
-    "bot": "ts-node cli.ts"
+    "bot": "ts-node cli.ts",
+    "collect": "ts-node collect-funds.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

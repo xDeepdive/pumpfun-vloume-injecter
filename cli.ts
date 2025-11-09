@@ -414,4 +414,64 @@ program
     }
   });
 
+// Collect Command
+program
+  .command('collect')
+  .description('Collect all SOL from trading wallets back to main wallet')
+  .action(async () => {
+    showHeader();
+    console.log(chalk.yellow('💰 Collect Funds\n'));
+
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    if (!fs.existsSync(MAIN_WALLET_FILE)) {
+      console.log(chalk.red('❌ Main wallet not found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    const keysPath = path.join(process.cwd(), 'keys', 'data.json');
+    if (!fs.existsSync(keysPath)) {
+      console.log(chalk.red('❌ No trading wallets found. Run "npm run bot distribute" first.\n'));
+      return;
+    }
+
+    const wallets = JSON.parse(fs.readFileSync(keysPath, 'utf-8'));
+    console.log(chalk.white(`Found ${wallets.length} trading wallets\n`));
+
+    const { confirm } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Collect all funds from trading wallets to main wallet?',
+        default: true,
+      },
+    ]);
+
+    if (!confirm) {
+      console.log(chalk.yellow('Cancelled.\n'));
+      return;
+    }
+
+    console.log(chalk.cyan('\nStarting collection...\n'));
+
+    // Run the collect script
+    const { spawn } = await import('child_process');
+    const collectProcess = spawn('npx', ['ts-node', 'collect-funds.ts'], {
+      stdio: 'inherit',
+      shell: true,
+    });
+
+    collectProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log(chalk.green('\n✅ Collection completed successfully!\n'));
+      } else {
+        console.log(chalk.red(`\n❌ Collection failed with code ${code}\n`));
+      }
+    });
+  });
+
 program.parse();
