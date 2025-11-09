@@ -10,6 +10,8 @@ import path from 'path';
 import { distributeSol } from './walletsHelpers/distributeSol';
 import { fetchAllWalletBalance } from './walletsHelpers/checkBalances';
 import bs58 from 'bs58';
+import { logger } from './src/logger';
+import { profileManager, TokenProfile } from './src/profiles';
 
 const program = new Command();
 
@@ -281,6 +283,14 @@ program
   .option('-s, --slippage <percent>', 'Slippage tolerance (1-100)', '10')
   .option('--min <percent>', 'Minimum trade percentage', '20')
   .option('--max <percent>', 'Maximum trade percentage', '90')
+  .option('--dry-run', 'Simulate without sending real transactions')
+  .option('--auto-refund', 'Automatically refund wallets when low')
+  .option('--refund-threshold <sol>', 'Balance threshold for auto-refund', '0.008')
+  .option('--target-volume <sol>', 'Stop after reaching target volume')
+  .option('--max-budget <sol>', 'Stop after spending max budget in fees')
+  .option('--smart-slippage', 'Automatically adjust slippage for better success rate')
+  .option('--target-success-rate <percent>', 'Target success rate for smart slippage', '75')
+  .option('-p, --profile <name>', 'Use saved profile')
   .action(async (options) => {
     showHeader();
 
@@ -472,6 +482,313 @@ program
         console.log(chalk.red(`\n❌ Collection failed with code ${code}\n`));
       }
     });
+  });
+
+// History Command
+program
+  .command('history')
+  .description('View transaction history')
+  .option('-l, --limit <number>', 'Number of transactions to show', '50')
+  .option('-w, --wallet <address>', 'Filter by wallet address')
+  .option('-t, --token <address>', 'Filter by token mint')
+  .option('--success', 'Show only successful transactions')
+  .option('--failed', 'Show only failed transactions')
+  .option('--export <filename>', 'Export to CSV file')
+  .action(async (options) => {
+    showHeader();
+    console.log(chalk.yellow('📜 Transaction History\n'));
+
+    const filter: any = {
+      limit: parseInt(options.limit)
+    };
+
+    if (options.wallet) filter.wallet = options.wallet;
+    if (options.token) filter.tokenMint = options.token;
+    if (options.success) filter.success = true;
+    if (options.failed) filter.success = false;
+
+    const logs = logger.getLogs(filter);
+
+    if (logs.length === 0) {
+      console.log(chalk.gray('No transactions found.\n'));
+      return;
+    }
+
+    console.log(chalk.white(`Showing ${logs.length} transactions:\n`));
+
+    logs.forEach((log, i) => {
+      const statusIcon = log.success ? chalk.green('✓') : chalk.red('✗');
+      const date = new Date(log.date).toLocaleString();
+      console.log(`${statusIcon} [${i + 1}] ${date}`);
+      console.log(`   Wallet: ${chalk.cyan(log.wallet.slice(0, 8))}...`);
+      console.log(`   Amount: ${chalk.yellow(log.amount.toFixed(6))} SOL`);
+      console.log(`   Fee: ${chalk.red(log.fee.toFixed(6))} SOL`);
+      if (log.signature) {
+        console.log(`   Tx: ${chalk.gray(log.signature)}`);
+      }
+      if (log.error) {
+        console.log(`   Error: ${chalk.red(log.error)}`);
+      }
+      console.log();
+    });
+
+    if (options.export) {
+      const filename = logger.exportToCSV(options.export, filter);
+      console.log(chalk.green(`✅ Exported to ${filename}\n`));
+    }
+  });
+
+// Stats Command
+program
+  .command('stats')
+  .description('Show statistics and analytics')
+  .option('-t, --token <address>', 'Filter by token mint')
+  .option('--days <number>', 'Show stats for last N days')
+  .action(async (options) => {
+    showHeader();
+    console.log(chalk.yellow('📊 Statistics & Analytics\n'));
+
+    const filter: any = {};
+    if (options.token) filter.tokenMint = options.token;
+    if (options.days) {
+      const days = parseInt(options.days);
+      filter.startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    }
+
+    const stats = logger.getStats(filter);
+
+    console.log(chalk.white('Overall Statistics:'));
+    console.log(chalk.cyan(`  Total Transactions: ${stats.total}`));
+    console.log(chalk.green(`  Successful: ${stats.successful}`));
+    console.log(chalk.red(`  Failed: ${stats.failed}`));
+    console.log(chalk.yellow(`  Success Rate: ${stats.successRate.toFixed(2)}%`));
+    console.log();
+
+    console.log(chalk.white('Volume & Fees:'));
+    console.log(chalk.cyan(`  Total Volume: ${stats.totalVolume.toFixed(6)} SOL`));
+    console.log(chalk.red(`  Total Fees Paid: ${stats.totalFees.toFixed(6)} SOL`));
+    console.log(chalk.yellow(`  Avg Fee per Tx: ${stats.avgFeePerTx.toFixed(6)} SOL`));
+    console.log();
+
+    console.log(chalk.white('Performance:'));
+    console.log(chalk.cyan(`  Avg Execution Time: ${stats.avgExecutionTime.toFixed(0)}ms`));
+    console.log();
+
+    if (stats.totalVolume > 0) {
+      const costPercentage = (stats.totalFees / stats.totalVolume) * 100;
+      console.log(chalk.white('Efficiency:'));
+      console.log(chalk.yellow(`  Cost as % of Volume: ${costPercentage.toFixed(2)}%`));
+      console.log();
+    }
+  });
+
+// Profile Commands
+const profileCmd = program
+  .command('profile')
+  .description('Manage token profiles');
+
+profileCmd
+  .command('save <name>')
+  .description('Save current configuration as a profile')
+  .option('-t, --token <address>', 'Token mint address (required)')
+  .option('-i, --interval <ms>', 'Execution interval', '500')
+  .option('-s, --slippage <percent>', 'Slippage tolerance', '10')
+  .option('--min <percent>', 'Minimum trade percentage', '20')
+  .option('--max <percent>', 'Maximum trade percentage', '90')
+  .option('--auto-refund', 'Enable auto-refund')
+  .option('--refund-threshold <sol>', 'Refund threshold', '0.008')
+  .option('--target-volume <sol>', 'Target volume')
+  .option('--max-budget <sol>', 'Max budget')
+  .option('--smart-slippage', 'Enable smart slippage')
+  .option('--target-success-rate <percent>', 'Target success rate', '75')
+  .action((name, options) => {
+    if (!options.token) {
+      console.log(chalk.red('❌ Token address is required.\n'));
+      return;
+    }
+
+    const profile: TokenProfile = {
+      name,
+      tokenMint: options.token,
+      interval: parseInt(options.interval),
+      slippage: parseFloat(options.slippage),
+      minPercent: parseFloat(options.min),
+      maxPercent: parseFloat(options.max),
+      autoRefund: options.autoRefund || false,
+      refundThreshold: parseFloat(options.refundThreshold),
+      targetVolume: options.targetVolume ? parseFloat(options.targetVolume) : undefined,
+      maxBudget: options.maxBudget ? parseFloat(options.maxBudget) : undefined,
+      smartSlippage: options.smartSlippage || false,
+      targetSuccessRate: options.targetSuccessRate ? parseFloat(options.targetSuccessRate) : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    profileManager.save(profile);
+    console.log(chalk.green(`✅ Profile '${name}' saved successfully!\n`));
+  });
+
+profileCmd
+  .command('list')
+  .description('List all saved profiles')
+  .action(() => {
+    const profiles = profileManager.list();
+
+    if (profiles.length === 0) {
+      console.log(chalk.gray('No profiles found.\n'));
+      return;
+    }
+
+    console.log(chalk.yellow(`\n📋 Saved Profiles (${profiles.length}):\n`));
+
+    profiles.forEach((profile, i) => {
+      console.log(chalk.cyan(`${i + 1}. ${profile.name}`));
+      console.log(`   Token: ${chalk.gray(profile.tokenMint)}`);
+      console.log(`   Interval: ${profile.interval}ms, Slippage: ${profile.slippage}%`);
+      console.log(`   Range: ${profile.minPercent}%-${profile.maxPercent}%`);
+      if (profile.autoRefund) {
+        console.log(`   Auto-refund: ${chalk.green('Enabled')} (threshold: ${profile.refundThreshold} SOL)`);
+      }
+      if (profile.smartSlippage) {
+        console.log(`   Smart slippage: ${chalk.green('Enabled')}`);
+      }
+      if (profile.lastUsed) {
+        console.log(`   Last used: ${chalk.gray(new Date(profile.lastUsed).toLocaleString())}`);
+      }
+      console.log();
+    });
+  });
+
+profileCmd
+  .command('delete <name>')
+  .description('Delete a saved profile')
+  .action((name) => {
+    if (profileManager.delete(name)) {
+      console.log(chalk.green(`✅ Profile '${name}' deleted.\n`));
+    } else {
+      console.log(chalk.red(`❌ Profile '${name}' not found.\n`));
+    }
+  });
+
+profileCmd
+  .command('show <name>')
+  .description('Show profile details')
+  .action((name) => {
+    const profile = profileManager.get(name);
+
+    if (!profile) {
+      console.log(chalk.red(`❌ Profile '${name}' not found.\n`));
+      return;
+    }
+
+    console.log(chalk.yellow(`\n📋 Profile: ${chalk.cyan(profile.name)}\n`));
+    console.log(chalk.white('Configuration:'));
+    console.log(`  Token: ${chalk.cyan(profile.tokenMint)}`);
+    console.log(`  Interval: ${chalk.yellow(profile.interval)}ms`);
+    console.log(`  Slippage: ${chalk.yellow(profile.slippage)}%`);
+    console.log(`  Trade Range: ${chalk.yellow(profile.minPercent)}%-${chalk.yellow(profile.maxPercent)}%`);
+    console.log();
+
+    console.log(chalk.white('Features:'));
+    console.log(`  Auto-refund: ${profile.autoRefund ? chalk.green('✓') : chalk.gray('✗')}`);
+    if (profile.autoRefund) {
+      console.log(`    Threshold: ${profile.refundThreshold} SOL`);
+    }
+    console.log(`  Smart Slippage: ${profile.smartSlippage ? chalk.green('✓') : chalk.gray('✗')}`);
+    if (profile.smartSlippage && profile.targetSuccessRate) {
+      console.log(`    Target Success Rate: ${profile.targetSuccessRate}%`);
+    }
+    if (profile.targetVolume) {
+      console.log(`  Target Volume: ${chalk.cyan(profile.targetVolume)} SOL`);
+    }
+    if (profile.maxBudget) {
+      console.log(`  Max Budget: ${chalk.red(profile.maxBudget)} SOL`);
+    }
+    console.log();
+
+    console.log(chalk.white('Metadata:'));
+    console.log(`  Created: ${new Date(profile.createdAt).toLocaleString()}`);
+    if (profile.lastUsed) {
+      console.log(`  Last Used: ${new Date(profile.lastUsed).toLocaleString()}`);
+    }
+    console.log();
+  });
+
+// Wallets Command
+const walletsCmd = program
+  .command('wallets')
+  .description('Advanced wallet management');
+
+walletsCmd
+  .command('generate <number>')
+  .description('Generate wallet keypairs without funding')
+  .action((number) => {
+    const n = parseInt(number);
+    const wallets = [];
+
+    for (let i = 0; i < n; i++) {
+      const wallet = Keypair.generate();
+      wallets.push(bs58.encode(wallet.secretKey));
+    }
+
+    const keysDir = path.join(process.cwd(), 'keys');
+    if (!fs.existsSync(keysDir)) {
+      fs.mkdirSync(keysDir, { recursive: true });
+    }
+
+    const keysFile = path.join(keysDir, 'data.json');
+    let existing = [];
+    if (fs.existsSync(keysFile)) {
+      existing = JSON.parse(fs.readFileSync(keysFile, 'utf-8'));
+    }
+
+    existing.push(...wallets);
+    fs.writeFileSync(keysFile, JSON.stringify(existing, null, 2));
+
+    console.log(chalk.green(`✅ Generated ${n} wallets (unfunded)\n`));
+    console.log(chalk.yellow(`💡 Use "npm run bot -- distribute" to fund them.\n`));
+  });
+
+walletsCmd
+  .command('cleanup')
+  .description('Remove wallets with zero balance')
+  .action(async () => {
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found.\n'));
+      return;
+    }
+
+    const keysPath = path.join(process.cwd(), 'keys', 'data.json');
+    if (!fs.existsSync(keysPath)) {
+      console.log(chalk.red('❌ No wallets found.\n'));
+      return;
+    }
+
+    const connection = new Connection(config.rpcs[0], 'confirmed');
+    const walletKeys = JSON.parse(fs.readFileSync(keysPath, 'utf-8'));
+
+    console.log(chalk.yellow('🔍 Checking wallet balances...\n'));
+
+    const activeWallets = [];
+    let removedCount = 0;
+
+    for (const key of walletKeys) {
+      const keypair = Keypair.fromSecretKey(bs58.decode(key));
+      const balance = await connection.getBalance(keypair.publicKey);
+
+      if (balance > 0) {
+        activeWallets.push(key);
+      } else {
+        removedCount++;
+        console.log(chalk.gray(`Removing: ${keypair.publicKey.toBase58().slice(0, 8)}... (0 SOL)`));
+      }
+    }
+
+    fs.writeFileSync(keysPath, JSON.stringify(activeWallets, null, 2));
+
+    console.log(chalk.green(`\n✅ Cleanup complete!`));
+    console.log(chalk.cyan(`   Kept: ${activeWallets.length} wallets`));
+    console.log(chalk.red(`   Removed: ${removedCount} wallets\n`));
   });
 
 program.parse();
