@@ -12,6 +12,8 @@ import { fetchAllWalletBalance } from './walletsHelpers/checkBalances';
 import bs58 from 'bs58';
 import { logger } from './src/logger';
 import { profileManager, TokenProfile } from './src/profiles';
+import { createGasOptimizer } from './src/gasOptimizer';
+import { EnhancedVolumeInjector, VolumeConfig } from './src/volumeEnhanced';
 
 const program = new Command();
 
@@ -789,6 +791,350 @@ walletsCmd
     console.log(chalk.green(`\n✅ Cleanup complete!`));
     console.log(chalk.cyan(`   Kept: ${activeWallets.length} wallets`));
     console.log(chalk.red(`   Removed: ${removedCount} wallets\n`));
+  });
+
+// Gas Commands
+const gasCmd = program
+  .command('gas')
+  .description('Gas optimization and fee analysis');
+
+gasCmd
+  .command('check')
+  .description('Check current network gas prices and congestion')
+  .action(async () => {
+    showHeader();
+    console.log(chalk.yellow('⛽ Network Gas Analysis\n'));
+
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    const spinner = ora('Analyzing network conditions...').start();
+
+    try {
+      const connection = new Connection(config.rpcs[0], 'confirmed');
+      const gasOptimizer = createGasOptimizer(connection);
+
+      // Get network congestion
+      const congestion = await gasOptimizer.getNetworkCongestion();
+
+      spinner.succeed('Analysis complete!\n');
+
+      console.log(chalk.white('Network Congestion:'));
+      const congestionColor =
+        congestion.level === 'low' ? chalk.green :
+        congestion.level === 'medium' ? chalk.yellow :
+        congestion.level === 'high' ? chalk.red :
+        chalk.red.bold;
+
+      console.log(`  Level: ${congestionColor(congestion.level.toUpperCase())}`);
+      console.log(`  TPS: ${chalk.cyan(congestion.tps.toString())}`);
+      console.log(`  Avg Priority Fee: ${chalk.yellow(congestion.averageFee)} microLamports/CU`);
+      console.log(`  ${chalk.gray(congestion.recommendation)}`);
+      console.log();
+
+      // Get fee stats
+      const stats = gasOptimizer.getFeeStats();
+      if (stats.sampleSize > 0) {
+        console.log(chalk.white('Recent Fee Statistics:'));
+        console.log(`  Sample Size: ${chalk.cyan(stats.sampleSize)} transactions`);
+        console.log(`  Min: ${chalk.green(stats.min)} microLamports/CU`);
+        console.log(`  Median: ${chalk.yellow(stats.median)} microLamports/CU`);
+        console.log(`  75th Percentile: ${chalk.yellow(stats.p75)} microLamports/CU`);
+        console.log(`  90th Percentile: ${chalk.red(stats.p90)} microLamports/CU`);
+        console.log(`  Max: ${chalk.red(stats.max)} microLamports/CU`);
+        console.log();
+      }
+
+      // Get recommended config
+      const recommended = await gasOptimizer.getRecommendedConfig();
+      console.log(chalk.white('Recommended Settings:'));
+      console.log(`  Priority Level: ${chalk.cyan(recommended.priorityLevel)}`);
+      console.log(`  Compute Limit: ${chalk.cyan(recommended.computeUnitLimit?.toLocaleString())} CU`);
+      console.log();
+
+      console.log(chalk.gray('💡 Use these settings with: npm run bot -- start --gas-level ' + recommended.priorityLevel));
+      console.log();
+
+    } catch (error) {
+      spinner.fail(`Error: ${error}`);
+    }
+  });
+
+gasCmd
+  .command('estimate')
+  .description('Estimate transaction fees for different priority levels')
+  .action(async () => {
+    showHeader();
+    console.log(chalk.yellow('💰 Fee Estimation\n'));
+
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    const spinner = ora('Calculating fee estimates...').start();
+
+    try {
+      const connection = new Connection(config.rpcs[0], 'confirmed');
+      const gasOptimizer = createGasOptimizer(connection);
+
+      const levels: ('low' | 'medium' | 'high' | 'veryHigh')[] = ['low', 'medium', 'high', 'veryHigh'];
+
+      spinner.succeed('Estimates ready!\n');
+
+      console.log(chalk.white('Fee Estimates for Combined Buy/Sell Transaction:\n'));
+
+      for (const level of levels) {
+        const estimate = await gasOptimizer.estimateFee({
+          priorityLevel: level,
+          computeUnitLimit: 800000,
+        });
+
+        const color =
+          level === 'low' ? chalk.green :
+          level === 'medium' ? chalk.yellow :
+          level === 'high' ? chalk.red :
+          chalk.red.bold;
+
+        console.log(color(`${level.toUpperCase()} Priority:`));
+        console.log(`  Compute Unit Price: ${estimate.computeUnitPrice.toLocaleString()} microLamports/CU`);
+        console.log(`  Compute Unit Limit: ${estimate.computeUnitLimit.toLocaleString()} CU`);
+        console.log(`  Estimated Fee: ${chalk.cyan((estimate.estimatedFee / 1_000_000_000).toFixed(6))} SOL`);
+        console.log(`  Network Percentile: ${chalk.gray(estimate.percentile.toFixed(1))}th`);
+        console.log();
+      }
+
+      // Show auto recommendation
+      const autoEstimate = await gasOptimizer.estimateFee({
+        priorityLevel: 'auto',
+        computeUnitLimit: 800000,
+      });
+
+      console.log(chalk.cyan('AUTO (Recommended):'));
+      console.log(`  Compute Unit Price: ${autoEstimate.computeUnitPrice.toLocaleString()} microLamports/CU`);
+      console.log(`  Estimated Fee: ${chalk.cyan((autoEstimate.estimatedFee / 1_000_000_000).toFixed(6))} SOL`);
+      console.log(`  Based on: ${chalk.yellow(autoEstimate.recommendedLevel)} network conditions`);
+      console.log();
+
+      console.log(chalk.gray('💡 Fees are in addition to PumpFun protocol fees (~2%)'));
+      console.log();
+
+    } catch (error) {
+      spinner.fail(`Error: ${error}`);
+    }
+  });
+
+gasCmd
+  .command('compare')
+  .description('Compare fees between optimization levels')
+  .action(async () => {
+    showHeader();
+    console.log(chalk.yellow('📊 Fee Comparison & Savings\n'));
+
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    try {
+      const connection = new Connection(config.rpcs[0], 'confirmed');
+      const gasOptimizer = createGasOptimizer(connection);
+
+      // Base comparison against veryHigh
+      const baseEstimate = await gasOptimizer.estimateFee({
+        priorityLevel: 'veryHigh',
+        computeUnitLimit: 800000,
+      });
+
+      console.log(chalk.white('Potential Savings vs. Very High Priority:\n'));
+
+      const levels: ('low' | 'medium' | 'high')[] = ['low', 'medium', 'high'];
+
+      for (const level of levels) {
+        const estimate = await gasOptimizer.estimateFee({
+          priorityLevel: level,
+          computeUnitLimit: 800000,
+        });
+
+        const savings = gasOptimizer.calculateSavings(estimate, baseEstimate);
+
+        const color =
+          level === 'low' ? chalk.green :
+          level === 'medium' ? chalk.yellow :
+          chalk.red;
+
+        console.log(color(`${level.toUpperCase()} Priority:`));
+        console.log(`  Savings per tx: ${chalk.green((savings.savingsSOL).toFixed(6))} SOL (${savings.savingsPercent}%)`);
+        console.log(`  Savings per 100 tx: ${chalk.green((savings.savingsSOL * 100).toFixed(4))} SOL`);
+        console.log(`  Savings per 1000 tx: ${chalk.green((savings.savingsSOL * 1000).toFixed(3))} SOL`);
+        console.log();
+      }
+
+      console.log(chalk.cyan('💡 Tips:'));
+      console.log(chalk.gray('  • Use LOW during off-peak hours'));
+      console.log(chalk.gray('  • Use MEDIUM for normal conditions'));
+      console.log(chalk.gray('  • Use HIGH during network congestion'));
+      console.log(chalk.gray('  • Use AUTO to automatically adjust'));
+      console.log();
+
+    } catch (error) {
+      console.error(chalk.red(`Error: ${error}`));
+    }
+  });
+
+// Start command with gas optimization
+program
+  .command('start-optimized')
+  .description('Start bot with gas optimization')
+  .option('-t, --token <address>', 'Token mint address')
+  .option('-i, --interval <ms>', 'Execution interval', '1000')
+  .option('-s, --slippage <percent>', 'Slippage tolerance (1-100)', '25')
+  .option('--min <percent>', 'Minimum trade percentage', '30')
+  .option('--max <percent>', 'Maximum trade percentage', '70')
+  .option('--gas-level <level>', 'Gas priority level: low, medium, high, veryHigh, auto', 'auto')
+  .option('--max-gas-price <microLamports>', 'Maximum gas price in microLamports')
+  .option('--dry-run', 'Simulate without sending real transactions')
+  .option('--auto-refund', 'Automatically refund wallets when low')
+  .option('--refund-threshold <sol>', 'Balance threshold for auto-refund', '0.008')
+  .option('--target-volume <sol>', 'Stop after reaching target volume')
+  .option('--max-budget <sol>', 'Stop after spending max budget in fees')
+  .option('--smart-slippage', 'Automatically adjust slippage for better success rate')
+  .option('--target-success-rate <percent>', 'Target success rate for smart slippage', '75')
+  .option('-p, --profile <name>', 'Use saved profile')
+  .action(async (options) => {
+    showHeader();
+    console.log(chalk.yellow('🚀 Starting Optimized Volume Bot\n'));
+
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    const keysPath = path.join(process.cwd(), 'keys', 'data.json');
+    if (!fs.existsSync(keysPath)) {
+      console.log(chalk.red('❌ No wallets found. Run "npm run bot distribute" first.\n'));
+      return;
+    }
+
+    let tokenMint = options.token;
+    let profile: TokenProfile | undefined;
+
+    // Load profile if specified
+    if (options.profile) {
+      profile = profileManager.get(options.profile);
+      if (!profile) {
+        console.log(chalk.red(`❌ Profile "${options.profile}" not found.\n`));
+        return;
+      }
+      tokenMint = profile.tokenMint;
+      console.log(chalk.cyan(`📋 Using profile: ${options.profile}\n`));
+    }
+
+    // Prompt for token if not provided
+    if (!tokenMint) {
+      const answer = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'token',
+          message: 'Enter token mint address:',
+          validate: (input) => {
+            try {
+              new PublicKey(input);
+              return true;
+            } catch {
+              return 'Invalid public key';
+            }
+          },
+        },
+      ]);
+      tokenMint = answer.token;
+    }
+
+    const connection = new Connection(config.rpcs[0], 'confirmed');
+    const gasOptimizer = createGasOptimizer(connection);
+
+    // Show gas analysis
+    console.log(chalk.cyan('⛽ Gas Optimization Analysis\n'));
+
+    const congestion = await gasOptimizer.getNetworkCongestion();
+    console.log(chalk.white(`Network Congestion: ${congestion.level.toUpperCase()}`));
+    console.log(chalk.white(`TPS: ${congestion.tps}`));
+    console.log(chalk.white(`Recommendation: ${congestion.recommendation}`));
+
+    const estimate = await gasOptimizer.estimateFee({
+      priorityLevel: options.gasLevel as any,
+      maxPriorityFee: options.maxGasPrice ? parseInt(options.maxGasPrice) : undefined,
+      computeUnitLimit: 800000,
+    });
+
+    console.log(chalk.white(`Estimated Gas Fee: ${(estimate.estimatedFee / 1_000_000_000).toFixed(6)} SOL per tx\n`));
+
+    // Build volume config
+    const volumeConfig: VolumeConfig = {
+      tokenMint,
+      interval: profile?.interval || parseInt(options.interval),
+      slippage: profile?.slippage || parseInt(options.slippage),
+      minPercent: profile?.minPercent || parseInt(options.min),
+      maxPercent: profile?.maxPercent || parseInt(options.max),
+      dryRun: options.dryRun,
+      autoRefund: options.autoRefund || profile?.autoRefund,
+      refundThreshold: options.refundThreshold ? parseFloat(options.refundThreshold) : (profile?.refundThreshold || 0.008),
+      targetVolume: options.targetVolume ? parseFloat(options.targetVolume) : profile?.targetVolume,
+      maxBudget: options.maxBudget ? parseFloat(options.maxBudget) : profile?.maxBudget,
+      smartSlippage: options.smartSlippage || profile?.smartSlippage,
+      targetSuccessRate: options.targetSuccessRate ? parseInt(options.targetSuccessRate) : (profile?.targetSuccessRate || 75),
+      gasOptimization: {
+        priorityLevel: options.gasLevel as any,
+        maxPriorityFee: options.maxGasPrice ? parseInt(options.maxGasPrice) : undefined,
+        computeUnitLimit: 800000,
+        dynamicAdjustment: true,
+      },
+    };
+
+    // Show configuration summary
+    console.log(chalk.yellow('Configuration:'));
+    console.log(chalk.white(`Token: ${tokenMint.slice(0, 8)}...`));
+    console.log(chalk.white(`Interval: ${volumeConfig.interval}ms`));
+    console.log(chalk.white(`Slippage: ${volumeConfig.slippage}%`));
+    console.log(chalk.white(`Trade range: ${volumeConfig.minPercent}% - ${volumeConfig.maxPercent}%`));
+    console.log(chalk.white(`Gas priority: ${options.gasLevel}`));
+    if (volumeConfig.autoRefund) console.log(chalk.white(`Auto-refund: Enabled (${volumeConfig.refundThreshold} SOL threshold)`));
+    if (volumeConfig.smartSlippage) console.log(chalk.white(`Smart slippage: Enabled (target: ${volumeConfig.targetSuccessRate}%)`));
+    if (volumeConfig.targetVolume) console.log(chalk.white(`Target volume: ${volumeConfig.targetVolume} SOL`));
+    if (volumeConfig.maxBudget) console.log(chalk.white(`Max budget: ${volumeConfig.maxBudget} SOL`));
+    if (volumeConfig.dryRun) console.log(chalk.yellow(`Mode: DRY RUN (no real transactions)`));
+    console.log();
+
+    const { confirm } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: chalk.yellow('⚠️  Start volume injection with gas optimization?'),
+        default: false,
+      },
+    ]);
+
+    if (!confirm) {
+      console.log(chalk.yellow('Cancelled.\n'));
+      return;
+    }
+
+    console.log(chalk.green('✅ Starting bot with gas optimization...\n'));
+    console.log(chalk.gray('Press Ctrl+C to stop\n'));
+    console.log(chalk.gray('─'.repeat(60)) + '\n');
+
+    try {
+      const injector = new EnhancedVolumeInjector(volumeConfig);
+      await injector.start();
+    } catch (error) {
+      console.error(chalk.red(`\n❌ Error: ${error}\n`));
+    }
   });
 
 program.parse();

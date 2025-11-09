@@ -4,6 +4,7 @@ import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 import { BN } from "bn.js";
 import { RPCS_ENDPOINTS } from "../config";
 import { logger, TransactionLog } from "./logger";
+import { GasOptimizer, GasOptimizationConfig } from "./gasOptimizer";
 import fs from "fs";
 import path from "path";
 
@@ -21,6 +22,7 @@ export interface VolumeConfig {
     smartSlippage?: boolean;
     targetSuccessRate?: number;
     maxRetries?: number;
+    gasOptimization?: GasOptimizationConfig;
 }
 
 export class EnhancedVolumeInjector {
@@ -29,6 +31,7 @@ export class EnhancedVolumeInjector {
     private wallets: Keypair[] = [];
     private config: VolumeConfig;
     private mainWallet?: Keypair;
+    private gasOptimizer?: GasOptimizer;
 
     // Statistics
     private executionCount = 0;
@@ -36,6 +39,7 @@ export class EnhancedVolumeInjector {
     private errorCount = 0;
     private totalVolume = 0;
     private totalFees = 0;
+    private totalGasFees = 0;
     private isRunning = false;
     private shouldStop = false;
 
@@ -59,6 +63,9 @@ export class EnhancedVolumeInjector {
         if (config.autoRefund) {
             this.loadMainWallet();
         }
+        if (config.gasOptimization) {
+            this.gasOptimizer = new GasOptimizer(this.connection);
+        }
     }
 
     private getConnection(): Connection {
@@ -76,6 +83,9 @@ export class EnhancedVolumeInjector {
         console.log(`⚠️ Switching RPC from endpoint ${oldIndex} to ${this.currentRPCIndex}`);
         this.connection = this.getConnection();
         this.pumphelper = new PumpHelper(this.connection);
+        if (this.gasOptimizer) {
+            this.gasOptimizer = new GasOptimizer(this.connection);
+        }
     }
 
     private loadWallets() {
@@ -266,9 +276,24 @@ export class EnhancedVolumeInjector {
 
             if (tx1.success && tx2.success) {
                 const { TransactionMessage, VersionedTransaction } = await import("@solana/web3.js");
+
+                // Get priority fee instructions if gas optimization is enabled
+                let priorityFeeInstructions: any[] = [];
+                let estimatedGasFee = 0;
+
+                if (this.gasOptimizer && this.config.gasOptimization) {
+                    priorityFeeInstructions = await this.gasOptimizer.getPriorityFeeInstructions(
+                        this.config.gasOptimization
+                    );
+
+                    // Estimate gas fee for logging
+                    const feeEstimate = await this.gasOptimizer.estimateFee(this.config.gasOptimization);
+                    estimatedGasFee = feeEstimate.estimatedFee / LAMPORTS_PER_SOL;
+                }
+
                 const message = new TransactionMessage({
                     payerKey: signer.publicKey,
-                    instructions: [...tx1.data, ...tx2.data],
+                    instructions: [...priorityFeeInstructions, ...tx1.data, ...tx2.data],
                     recentBlockhash: blockhash
                 }).compileToV0Message();
 
@@ -277,6 +302,10 @@ export class EnhancedVolumeInjector {
 
                 const simulatedTx = await this.connection.simulateTransaction(vTx);
                 console.log(`[${this.executionCount}] Simulation result:`, simulatedTx.value.err ? "FAILED" : "SUCCESS");
+
+                if (this.gasOptimizer && this.config.gasOptimization) {
+                    console.log(`[${this.executionCount}] Priority level: ${this.config.gasOptimization.priorityLevel}, Est. gas fee: ${estimatedGasFee.toFixed(6)} SOL`);
+                }
 
                 if (!simulatedTx.value.err) {
                     const signature = await this.connection.sendTransaction(vTx, {
@@ -287,10 +316,11 @@ export class EnhancedVolumeInjector {
 
                     logEntry.signature = signature;
                     logEntry.success = true;
-                    logEntry.fee = solAmount * 0.02;
+                    logEntry.fee = solAmount * 0.02 + estimatedGasFee;
                     this.successCount++;
                     this.totalVolume += solAmount * 2; // Buy + sell
                     this.totalFees += solAmount * 0.02;
+                    this.totalGasFees += estimatedGasFee;
                 } else {
                     console.error(`[${this.executionCount}] Simulation failed:`, simulatedTx.value.err);
                     logEntry.success = false;
@@ -345,13 +375,22 @@ export class EnhancedVolumeInjector {
         console.log(`\n--- Stats after ${this.executionCount} executions ---`);
         console.log(`Success: ${this.successCount}, Errors: ${this.errorCount}, Success rate: ${successRate}%`);
         console.log(`Total Volume: ${this.totalVolume.toFixed(4)} SOL`);
-        console.log(`Total Fees: ${this.totalFees.toFixed(4)} SOL`);
-        console.log(`Avg Fee/Tx: ${(this.totalFees / Math.max(1, this.successCount)).toFixed(6)} SOL`);
+        console.log(`Total Protocol Fees: ${this.totalFees.toFixed(4)} SOL`);
+
+        if (this.gasOptimizer && this.totalGasFees > 0) {
+            console.log(`Total Gas Fees: ${this.totalGasFees.toFixed(6)} SOL`);
+            console.log(`Total Fees (Protocol + Gas): ${(this.totalFees + this.totalGasFees).toFixed(6)} SOL`);
+            console.log(`Avg Fee/Tx: ${((this.totalFees + this.totalGasFees) / Math.max(1, this.successCount)).toFixed(6)} SOL`);
+        } else {
+            console.log(`Avg Fee/Tx: ${(this.totalFees / Math.max(1, this.successCount)).toFixed(6)} SOL`);
+        }
+
         if (this.config.targetVolume) {
             console.log(`Progress to target: ${((this.totalVolume / this.config.targetVolume) * 100).toFixed(1)}%`);
         }
         if (this.config.maxBudget) {
-            console.log(`Budget used: ${((this.totalFees / this.config.maxBudget) * 100).toFixed(1)}%`);
+            const totalCost = this.totalFees + this.totalGasFees;
+            console.log(`Budget used: ${((totalCost / this.config.maxBudget) * 100).toFixed(1)}%`);
         }
         console.log();
     }
@@ -360,6 +399,9 @@ export class EnhancedVolumeInjector {
         console.log(`Starting ${this.config.dryRun ? 'DRY RUN ' : ''}volume injection...`);
         if (this.config.dryRun) {
             console.log('🧪 DRY RUN MODE - No real transactions will be sent\n');
+        }
+        if (this.gasOptimizer && this.config.gasOptimization) {
+            console.log(`⚡ Gas Optimization: Enabled (Priority: ${this.config.gasOptimization.priorityLevel})\n`);
         }
 
         const intervalId = setInterval(async () => {

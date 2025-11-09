@@ -1,6 +1,6 @@
 # 🚀 Advanced Features Guide
 
-## ✅ **11 Major Features Implemented**
+## ✅ **12 Major Features Implemented**
 
 All features are **production-ready** and fully integrated into the CLI!
 
@@ -19,6 +19,7 @@ All features are **production-ready** and fully integrated into the CLI!
 9. [Advanced Wallet Management](#9-advanced-wallet-management)
 10. [Wallet Rotation Strategy](#10-wallet-rotation-strategy)
 11. [Health Monitoring](#11-health-monitoring)
+12. [Gas Optimization](#12-gas-optimization)
 
 ---
 
@@ -520,6 +521,212 @@ Avg Fee/Tx: 0.000281 SOL
 
 ---
 
+## 12. Gas Optimization
+
+**What it does:** Optimizes transaction fees with priority fee management
+
+### Features:
+- ✅ Network congestion analysis
+- ✅ Automatic priority fee calculation
+- ✅ Multiple priority levels (low, medium, high, veryHigh, auto)
+- ✅ Real-time fee estimation
+- ✅ Gas savings tracking
+- ✅ Compute unit optimization
+
+### Commands:
+
+```bash
+# Check network congestion and get recommendations
+npm run bot -- gas check
+
+# Estimate fees for different priority levels
+npm run bot -- gas estimate
+
+# Compare potential savings
+npm run bot -- gas compare
+
+# Start with gas optimization (auto priority)
+npm run bot -- start-optimized -t YOUR_TOKEN
+
+# Use specific priority level
+npm run bot -- start-optimized -t YOUR_TOKEN --gas-level low
+npm run bot -- start-optimized -t YOUR_TOKEN --gas-level medium
+npm run bot -- start-optimized -t YOUR_TOKEN --gas-level high
+npm run bot -- start-optimized -t YOUR_TOKEN --gas-level auto
+
+# Set maximum gas price (in microLamports)
+npm run bot -- start-optimized -t YOUR_TOKEN --max-gas-price 50000
+
+# Combine with other features
+npm run bot -- start-optimized \
+  -t YOUR_TOKEN \
+  --gas-level auto \
+  --smart-slippage \
+  --auto-refund \
+  --target-volume 1.0
+```
+
+### Network Congestion Check:
+```bash
+$ npm run bot -- gas check
+
+⛽ Network Gas Analysis
+
+Network Congestion: MEDIUM
+TPS: 2,145
+Average Priority Fee: 8,500 microLamports
+Recommendation: Moderate congestion - use medium priority fees
+
+Fee Statistics (from last 50 txs):
+  Min: 1,000 microLamports
+  Max: 25,000 microLamports
+  Average: 8,500 microLamports
+  Median (p50): 7,800 microLamports
+  p75: 12,000 microLamports
+  p90: 18,500 microLamports
+```
+
+### Fee Estimation:
+```bash
+$ npm run bot -- gas estimate
+
+⛽ Gas Fee Estimation (800,000 compute units)
+
+Priority Levels:
+  LOW (1,000 μL/CU)
+    → Est. Fee: 0.000800 SOL (~$0.08)
+    → Percentile: 15th (faster than 15% of txs)
+
+  MEDIUM (10,000 μL/CU)
+    → Est. Fee: 0.008000 SOL (~$0.80)
+    → Percentile: 52nd (faster than 52% of txs)
+    → ⭐ RECOMMENDED
+
+  HIGH (50,000 μL/CU)
+    → Est. Fee: 0.040000 SOL (~$4.00)
+    → Percentile: 88th (faster than 88% of txs)
+
+  VERY HIGH (100,000 μL/CU)
+    → Est. Fee: 0.080000 SOL (~$8.00)
+    → Percentile: 97th (faster than 97% of txs)
+
+  AUTO (Dynamic)
+    → Current: 12,500 μL/CU
+    → Est. Fee: 0.010000 SOL (~$1.00)
+    → Percentile: 60th
+```
+
+### Priority Levels Explained:
+
+| Level | When to Use | Speed | Cost |
+|-------|-------------|-------|------|
+| **low** | Low network congestion, not time-sensitive | Slower | Cheapest |
+| **medium** | Normal conditions, balanced approach | Moderate | Moderate |
+| **high** | High congestion, need faster confirmation | Fast | Higher |
+| **veryHigh** | Critical/urgent transactions | Very Fast | Expensive |
+| **auto** | Let the bot decide based on network | Adaptive | Optimized |
+
+### How It Works:
+
+```
+1. Network Analysis
+   → Monitors TPS (transactions per second)
+   → Analyzes recent transaction fees
+   → Calculates fee percentiles
+
+2. Priority Fee Calculation
+   → Based on network congestion level
+   → Considers your priority level setting
+   → Applies max price cap (if set)
+
+3. Transaction Creation
+   → Adds ComputeBudget instructions
+   → Sets compute unit limit (optimized for tx type)
+   → Sets compute unit price (priority fee)
+
+4. Fee Tracking
+   → Separates protocol fees from gas fees
+   → Shows breakdown in stats
+   → Tracks total costs accurately
+```
+
+### Output Example:
+
+```bash
+$ npm run bot -- start-optimized -t YOUR_TOKEN --gas-level auto
+
+🚀 Starting Optimized Volume Bot
+
+⛽ Gas Optimization Analysis
+
+Network Congestion: MEDIUM
+TPS: 2,145
+Recommendation: Moderate congestion - use medium priority fees
+Estimated Gas Fee: 0.008500 SOL per tx
+
+Configuration:
+  Token: 7bunMtCJ...
+  Interval: 1000ms
+  Slippage: 25%
+  Trade range: 30% - 70%
+  Gas priority: auto
+
+⚠️  Start volume injection with gas optimization? Yes
+
+✅ Starting bot with gas optimization...
+
+Starting volume injection...
+⚡ Gas Optimization: Enabled (Priority: auto)
+
+[1] Using 45.67% of wallet balance: 0.0045 SOL
+[1] Simulation result: SUCCESS
+[1] Priority level: auto, Est. gas fee: 0.008500 SOL
+[1] Transaction sent: 5fFyYQx3...
+[1] Execution completed in 1250ms
+
+--- Stats after 10 executions ---
+Success: 9, Errors: 1, Success rate: 90.00%
+Total Volume: 0.084500 SOL
+Total Protocol Fees: 0.001690 SOL
+Total Gas Fees: 0.076500 SOL
+Total Fees (Protocol + Gas): 0.078190 SOL
+Avg Fee/Tx: 0.008688 SOL
+```
+
+### Benefits:
+
+✅ **Lower Costs**: Use low priority during off-peak hours
+✅ **Better Confirmation**: Higher priority gets faster inclusion
+✅ **Network Aware**: Auto mode adapts to congestion
+✅ **Transparent**: See exact fee breakdown
+✅ **Optimized**: Right compute units for each tx type
+✅ **Controlled**: Set max gas price to cap costs
+
+### Cost Comparison:
+
+```
+Without Gas Optimization:
+  → Uses default priority (often veryHigh)
+  → ~0.080000 SOL per tx
+  → 100 txs = 8.00 SOL in gas fees
+
+With Gas Optimization (auto):
+  → Adaptive priority based on network
+  → ~0.010000 SOL per tx (average)
+  → 100 txs = 1.00 SOL in gas fees
+  → 💰 SAVES 7.00 SOL (87.5%)
+```
+
+### Tips:
+
+1. **Use `auto` for best results** - Adapts to network conditions automatically
+2. **Check network first** - Run `gas check` before starting
+3. **Set max price** - Prevent unexpected high fees during spikes
+4. **Monitor stats** - Gas fees shown separately in output
+5. **Combine features** - Works with all other advanced features
+
+---
+
 ## 🎯 **Quick Start Examples**
 
 ### Conservative Mode (Safe & Steady):
@@ -570,6 +777,16 @@ npm run bot -- profile save mytoken \
 npm run bot -- start --profile mytoken
 ```
 
+### Gas Optimized Mode (Low Fees):
+```bash
+npm run bot -- start-optimized \
+  -t YOUR_TOKEN \
+  --gas-level auto \
+  --smart-slippage \
+  --auto-refund \
+  --target-volume 1.0
+```
+
 ---
 
 ## 📊 **Complete Command Reference**
@@ -580,6 +797,7 @@ npm run bot -- setup              # Initial configuration
 npm run bot -- distribute         # Create & fund wallets
 npm run bot -- balance            # Check wallet balances
 npm run bot -- start              # Start bot (many options)
+npm run bot -- start-optimized    # Start with gas optimization
 npm run bot -- collect            # Collect SOL back
 npm run bot -- info               # View configuration
 npm run bot -- history            # Transaction history
@@ -600,6 +818,13 @@ npm run bot -- wallets generate <number>
 npm run bot -- wallets cleanup
 ```
 
+### Gas Optimization Commands:
+```bash
+npm run bot -- gas check          # Network congestion analysis
+npm run bot -- gas estimate       # Fee estimates for all levels
+npm run bot -- gas compare        # Compare savings vs high priority
+```
+
 ### Start Options:
 ```bash
 -t, --token <address>              Token mint address
@@ -617,18 +842,25 @@ npm run bot -- wallets cleanup
 -p, --profile <name>               Use saved profile
 ```
 
+### Start-Optimized Options:
+```bash
+All start options PLUS:
+--gas-level <level>                Priority: low, medium, high, veryHigh, auto
+--max-gas-price <microLamports>    Maximum gas price cap
+```
+
 ---
 
 ## 🚀 **Next Steps**
 
 ### Coming Soon (Not Yet Implemented):
 - ⏰ **Scheduled Runs** - Run at specific times
-- 📈 **Gas Optimization** - Dynamic fee calculation
 - 🌐 **Web Dashboard** - Browser-based monitoring
 - 🔌 **API Mode** - REST API control
 
 ### Currently Available:
-✅ 11 major features fully implemented
+✅ 12 major features fully implemented
+✅ Gas optimization integrated
 ✅ All core functionality working
 ✅ Production-ready code
 ✅ Comprehensive CLI
