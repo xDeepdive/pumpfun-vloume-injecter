@@ -185,14 +185,113 @@ Press Ctrl+C
 
 ## 📋 All Available Commands
 
+### Main Commands
 | Command | Description | Example |
 |---------|-------------|---------|
-| `npm run bot setup` | Configure RPC and wallet | First-time setup |
-| `npm run bot distribute` | Create trading wallets | `-n 30 -a 0.02` |
-| `npm run bot balance` | Check wallet balances | Show all balances |
-| `npm run bot start` | Start volume bot | `-t TOKEN -i 1000` |
-| `npm run bot info` | Show configuration | View current settings |
+| `npm run bot -- setup` | Configure RPC and wallet | First-time setup |
+| `npm run bot -- distribute` | Create trading wallets | `-n 5 -a 0.01` |
+| `npm run bot -- balance` | Check wallet balances | Show all balances |
+| `npm run bot -- start` | Start volume bot (basic) | `-t TOKEN -i 1000` |
+| `npm run bot -- start-optimized` | Start with gas optimization | `-t TOKEN --gas-level auto` |
+| `npm run bot -- collect` | Collect SOL back to main wallet | Recover funds |
+| `npm run bot -- info` | Show configuration | View current settings |
+
+### Advanced Commands
+| Command | Description | Example |
+|---------|-------------|---------|
+| `npm run bot -- history` | View transaction history | `--limit 50 --export` |
+| `npm run bot -- stats` | Analytics dashboard | Show statistics |
+| `npm run bot -- gas check` | Network congestion analysis | Check fees |
+| `npm run bot -- gas estimate` | Fee estimation | All priority levels |
+| `npm run bot -- profile save` | Save configuration | `mytoken -t TOKEN` |
+| `npm run bot -- wallets generate` | Generate wallets | Generate 10 wallets |
 | `npm run bot -- --help` | Show all commands | Get help |
+
+---
+
+## 🚀 Advanced Features (12 Features)
+
+This bot includes 12 major advanced features:
+
+### 1. Gas Optimization (NEW!)
+Save up to 87.5% on transaction fees with priority fee optimization.
+
+```bash
+# Check network congestion
+npm run bot -- gas check
+
+# Estimate fees for different priority levels
+npm run bot -- gas estimate
+
+# Start with gas optimization (RECOMMENDED)
+npm run bot -- start-optimized -t YOUR_TOKEN --gas-level auto
+```
+
+**Priority Levels:**
+- `low` - Cheapest, slower confirmation
+- `medium` - Balanced approach
+- `high` - Faster, more expensive
+- `veryHigh` - Fastest, most expensive
+- `auto` - Network-adaptive (recommended)
+
+### 2. Smart Slippage Adjustment
+Automatically adjusts slippage based on success rate.
+
+```bash
+npm run bot -- start -t TOKEN --smart-slippage --target-success-rate 75
+```
+
+### 3. Auto-Refund System
+Automatically refunds wallets when balance is low.
+
+```bash
+npm run bot -- start -t TOKEN --auto-refund --refund-threshold 0.008
+```
+
+### 4. Transaction Logging & Analytics
+Complete transaction history with CSV export.
+
+```bash
+npm run bot -- history --limit 50
+npm run bot -- history --export report.csv
+npm run bot -- stats
+```
+
+### 5. Profile Management
+Save and reuse configurations.
+
+```bash
+# Save profile
+npm run bot -- profile save mytoken -t TOKEN -i 1000 -s 25
+
+# Use profile
+npm run bot -- start --profile mytoken
+```
+
+### 6. Dry Run Mode
+Test without sending real transactions.
+
+```bash
+npm run bot -- start -t TOKEN --dry-run
+```
+
+### 7. Target Volume & Budget Control
+Set goals and spending limits.
+
+```bash
+npm run bot -- start -t TOKEN \
+  --target-volume 10.0 \
+  --max-budget 0.5
+```
+
+### 8-12. Additional Features
+- Multi-RPC Failover (automatic)
+- Wallet Rotation Strategy (automatic)
+- Advanced Wallet Management
+- Health Monitoring
+- Real-time Statistics Dashboard
+
+**See [FEATURES.md](FEATURES.md) for complete documentation.**
 
 ---
 
@@ -296,21 +395,35 @@ pumpfun-vloume-injecter/
 - Network fee: ~0.000005 SOL
 - PumpFun buy fee: ~1% of trade amount
 - PumpFun sell fee: ~1% of trade amount
-- **Net loss per cycle: ~2% + network fees**
+- Gas fees (priority): Variable (see below)
+- **Net loss per cycle: ~2% + gas fees**
+
+### Gas Fees Comparison
+
+**Without Gas Optimization:**
+- Default priority (veryHigh): ~0.08 SOL per tx
+- 100 transactions = ~8.00 SOL in gas fees
+
+**With Gas Optimization (`--gas-level auto`):**
+- Adaptive priority: ~0.01 SOL per tx
+- 100 transactions = ~1.00 SOL in gas fees
+- **SAVES 7.00 SOL (87.5%)**
 
 ### Example Costs
 
-**With 0.01 SOL per trade:**
-- Each cycle loses: ~0.0002 SOL (2%)
-- At 500ms interval: 2 trades/second = 7,200 trades/hour
-- **Hourly cost: ~1.44 SOL in fees**
+**Basic Mode (without gas optimization):**
+- Protocol fees: ~2% of volume
+- Gas fees: ~0.08 SOL per tx
+- At 500ms interval: 7,200 txs/hour
+- **Hourly gas cost: ~576 SOL**
 
-**With 0.005 SOL per trade:**
-- Each cycle loses: ~0.0001 SOL (2%)
-- At 1000ms interval: 1 trade/second = 3,600 trades/hour
-- **Hourly cost: ~0.36 SOL in fees**
+**Optimized Mode (with `--gas-level auto`):**
+- Protocol fees: ~2% of volume
+- Gas fees: ~0.01 SOL per tx
+- At 500ms interval: 7,200 txs/hour
+- **Hourly gas cost: ~72 SOL (87.5% savings)**
 
-**Budget accordingly!** Wallets will run out of SOL quickly.
+**Recommendation:** ALWAYS use `start-optimized` to save on gas fees!
 
 ---
 
