@@ -376,6 +376,7 @@ program
     const { spawn } = await import('child_process');
     const botProcess = spawn('npx', ['ts-node', 'src/volume.ts'], {
       stdio: 'inherit',
+      shell: true,
     });
 
     botProcess.on('close', (code) => {
