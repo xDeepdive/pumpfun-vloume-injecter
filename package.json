@@ -1,4 +1,10 @@
 {
+  "name": "pumpfun-volume-bot",
+  "version": "1.0.0",
+  "description": "PumpFun Volume Injection Bot with CLI",
+  "scripts": {
+    "bot": "ts-node cli.ts"
+  },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
     "@solana/spl-token": "^0.4.14",
@@ -6,11 +12,19 @@
     "axios": "^1.11.0",
     "bn.js": "^5.2.2",
     "bs58": "^6.0.0",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.2",
     "dotenv": "^17.2.2",
     "i": "^0.3.7",
-    "npm": "^11.6.0"
+    "inquirer": "^8.2.7",
+    "npm": "^11.6.0",
+    "ora": "^5.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/bn.js": "^5.2.0"
+    "@types/bn.js": "^5.2.0",
+    "@types/inquirer": "^9.0.9",
+    "@types/node": "^20.19.24"
   }
 }
