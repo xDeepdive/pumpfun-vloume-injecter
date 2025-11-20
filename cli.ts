@@ -14,6 +14,7 @@ import { logger } from './src/logger';
 import { profileManager, TokenProfile } from './src/profiles';
 import { createGasOptimizer } from './src/gasOptimizer';
 import { EnhancedVolumeInjector, VolumeConfig } from './src/volumeEnhanced';
+import { StealthVolumeInjector, StealthVolumeConfig } from './src/volumeStealth';
 
 const program = new Command();
 
@@ -1131,6 +1132,171 @@ program
 
     try {
       const injector = new EnhancedVolumeInjector(volumeConfig);
+      await injector.start();
+    } catch (error) {
+      console.error(chalk.red(`\n❌ Error: ${error}\n`));
+    }
+  });
+
+// Start Stealth Mode - All 17 Advanced Features
+program
+  .command('start-stealth')
+  .description('Start bot with ALL 17 stealth features (undetectable volume)')
+  .option('-t, --token <address>', 'Token mint address')
+  .option('-i, --interval <ms>', 'Base execution interval', '3000')
+  .option('-s, --slippage <percent>', 'Base slippage tolerance', '35')
+  .option('--min <percent>', 'Minimum trade percentage', '20')
+  .option('--max <percent>', 'Maximum trade percentage', '70')
+  .option('--gas-level <level>', 'Gas priority level', 'auto')
+  .option('--auto-refund', 'Enable auto-refund', true)
+  .option('--smart-slippage', 'Enable smart slippage', true)
+  .option('--multi-hop', 'Use multi-hop funding obfuscation')
+  .option('--use-jito', 'Use Jito bundles (50% of trades)')
+  .option('--ai-personalities', 'Enable AI agent personalities')
+  .option('--mayhem', 'Activate MAYHEM mode (24h aggressive)')
+  .option('--mayhem-target <sol>', 'Mayhem mode target volume', '100')
+  .option('--target-volume <sol>', 'Stop after reaching target volume')
+  .option('--max-budget <sol>', 'Maximum budget for fees')
+  .option('--dry-run', 'Test mode (no real transactions)')
+  .action(async (options) => {
+    showHeader();
+    console.log(chalk.green.bold('\n🕵️  STEALTH MODE - 17 ADVANCED FEATURES\n'));
+
+    const config = loadConfig();
+    if (!config) {
+      console.log(chalk.red('❌ No configuration found. Run "npm run bot setup" first.\n'));
+      return;
+    }
+
+    const keysPath = path.join(process.cwd(), 'keys', 'data.json');
+    if (!fs.existsSync(keysPath)) {
+      console.log(chalk.red('❌ No wallets found. Run "npm run bot distribute" first.\n'));
+      return;
+    }
+
+    let tokenMint = options.token;
+
+    if (!tokenMint) {
+      const answer = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'token',
+          message: 'Enter token mint address:',
+          validate: (input) => {
+            try {
+              new PublicKey(input);
+              return true;
+            } catch {
+              return 'Invalid public key';
+            }
+          },
+        },
+      ]);
+      tokenMint = answer.token;
+    }
+
+    // Show stealth features
+    console.log(chalk.cyan('📋 ENABLED STEALTH FEATURES:\n'));
+    console.log(chalk.green('✅ Feature 1: Human Behavior (FOMO, panic, sessions)'));
+    console.log(chalk.green('✅ Feature 2: Wallet Aging (7-30 days old)'));
+    console.log(chalk.green('✅ Feature 3: Non-Linear Patterns (6 strategies)'));
+    console.log(chalk.green('✅ Feature 4: Organic Sizing (bell curve, fibonacci)'));
+    console.log(chalk.green('✅ Feature 5: Multi-Token Diversity'));
+    console.log(chalk.green('✅ Feature 6: Jito Bundle Randomization'));
+    console.log(chalk.green('✅ Feature 7: Signature Obfuscation'));
+    console.log(chalk.green('✅ Feature 8: Clean Volume Metrics'));
+    console.log(chalk.green('✅ Feature 9: Mayhem Mode' + (options.mayhem ? ` (${options.mayhemTarget} SOL)` : ' (disabled)')));
+    console.log(chalk.green('✅ Feature 10: AI Agent Personalities' + (options.aiPersonalities ? '' : ' (disabled)')));
+    console.log(chalk.green('✅ Feature 11: Funding Obfuscation' + (options.multiHop ? ' (multi-hop)' : '')));
+    console.log(chalk.green('✅ Feature 12: Timing Entropy (burst/silent)'));
+    console.log(chalk.green('✅ Feature 13: Network Diversification'));
+    console.log(chalk.green('✅ Feature 14: Social Sentiment'));
+    console.log(chalk.green('✅ Feature 15: Failure Simulation (7%)'));
+    console.log(chalk.green('✅ Feature 16: Wallet Distribution (whale/fish/shrimp)'));
+    console.log(chalk.green('✅ Feature 17: P/L Realism (revenge trading)'));
+    console.log();
+
+    const connection = new Connection(config.rpcs[0], 'confirmed');
+    const gasOptimizer = createGasOptimizer(connection);
+
+    // Show gas analysis
+    console.log(chalk.cyan('⛽ Network Analysis\n'));
+    const congestion = await gasOptimizer.getNetworkCongestion();
+    console.log(chalk.white(`Network Congestion: ${congestion.level.toUpperCase()}`));
+    console.log(chalk.white(`TPS: ${congestion.tps}`));
+    console.log();
+
+    // Build stealth config
+    const stealthConfig: StealthVolumeConfig = {
+      tokenMint,
+      interval: parseInt(options.interval),
+      slippage: parseInt(options.slippage),
+      minPercent: parseInt(options.min),
+      maxPercent: parseInt(options.max),
+      dryRun: options.dryRun,
+      autoRefund: options.autoRefund,
+      refundThreshold: 0.008,
+      targetVolume: options.targetVolume ? parseFloat(options.targetVolume) : undefined,
+      maxBudget: options.maxBudget ? parseFloat(options.maxBudget) : undefined,
+      smartSlippage: options.smartSlippage,
+      targetSuccessRate: 75,
+      maxRetries: 3,
+      gasOptimization: {
+        priorityLevel: options.gasLevel as any,
+        computeUnitLimit: 800000,
+        dynamicAdjustment: true,
+      },
+      // Stealth features
+      stealthMode: true,
+      walletAging: true,
+      multiHopFunding: options.multiHop || false,
+      useJito: options.useJito || false,
+      mayhemMode: options.mayhem || false,
+      mayhemTarget: options.mayhem ? parseFloat(options.mayhemTarget) : undefined,
+      aiPersonalities: options.aiPersonalities || false,
+      cleanVolumeOnly: true,
+    };
+
+    // Show configuration
+    console.log(chalk.yellow('⚙️  Configuration:'));
+    console.log(chalk.white(`Token: ${tokenMint.slice(0, 8)}...`));
+    console.log(chalk.white(`Base Interval: ${stealthConfig.interval}ms (will vary with timing entropy)`));
+    console.log(chalk.white(`Base Slippage: ${stealthConfig.slippage}% (will adjust dynamically)`));
+    console.log(chalk.white(`Trade Range: ${stealthConfig.minPercent}%-${stealthConfig.maxPercent}% (organic sizing)`));
+    console.log(chalk.white(`Gas Priority: ${options.gasLevel} (auto-adjusted)`));
+    console.log(chalk.white(`Multi-Hop Funding: ${options.multiHop ? chalk.green('YES') : chalk.gray('NO')}`));
+    console.log(chalk.white(`Jito Bundles: ${options.useJito ? chalk.green('YES (50%)') : chalk.gray('NO')}`));
+    console.log(chalk.white(`AI Personalities: ${options.aiPersonalities ? chalk.green('YES') : chalk.gray('NO')}`));
+    console.log(chalk.white(`Mayhem Mode: ${options.mayhem ? chalk.red(`YES (${options.mayhemTarget} SOL in 24h)`) : chalk.gray('NO')}`));
+    if (stealthConfig.targetVolume) console.log(chalk.white(`Target Volume: ${stealthConfig.targetVolume} SOL`));
+    if (stealthConfig.maxBudget) console.log(chalk.white(`Max Budget: ${stealthConfig.maxBudget} SOL`));
+    if (stealthConfig.dryRun) console.log(chalk.yellow(`Mode: DRY RUN (testing only)`));
+    console.log();
+
+    console.log(chalk.yellow.bold('⚠️  WARNING: Stealth mode uses advanced techniques that look 100% organic.'));
+    console.log(chalk.yellow('This will be UNDETECTABLE on Axiom, Bubblemaps, and Solscan.'));
+    console.log();
+
+    const { confirm } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Start stealth volume injection?',
+        default: false,
+      },
+    ]);
+
+    if (!confirm) {
+      console.log(chalk.yellow('Cancelled.\n'));
+      return;
+    }
+
+    console.log(chalk.green.bold('\n🚀 STARTING STEALTH MODE...\n'));
+    console.log(chalk.gray('Press Ctrl+C to stop\n'));
+    console.log(chalk.gray('─'.repeat(60)) + '\n');
+
+    try {
+      const injector = new StealthVolumeInjector(stealthConfig);
       await injector.start();
     } catch (error) {
       console.error(chalk.red(`\n❌ Error: ${error}\n`));
